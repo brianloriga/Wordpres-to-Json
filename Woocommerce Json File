@@ -1,0 +1,64 @@
+<?php
+require_once __DIR__ . '/../../wp-load.php'; //Change your directory here
+
+$consumer_key = ''; //your woocommerrce API Key Here
+$consumer_secret = ''; // your woocommerce API Key Here
+
+$page = 1;
+$events = array();
+do {
+    $api_url = 'https://domain-name/wp-json/wc/v3/products?per_page=100&'; //change your domain name 
+    $headers = array(
+        'Authorization' => 'Basic ' . base64_encode($consumer_key . ':' . $consumer_secret),
+    );
+
+    $response = wp_remote_get(
+        $api_url,
+        array(
+            'headers' => $headers,
+            'timeout' => 30, // Increase the timeout to 30 seconds
+        )
+    );
+
+    if (is_array($response) && !is_wp_error($response)) {
+        $body = $response['body'];
+        $products = json_decode($body, true);
+
+        if (empty($products)) {
+            break;
+        }
+
+        error_log('Fetched ' . count($products) . ' products');
+        
+        foreach ($products as $product) {
+            $start_date_str = substr($product['name'], 0, 5);
+            $start_date = DateTime::createFromFormat('n/j', $start_date_str);
+
+            if ($start_date instanceof DateTime) {
+                $start_date->setTime(12, 0, 0);
+                $start_date->setTimezone(new DateTimeZone('America/New_York'));
+
+                $event = array(
+                    'title' => $product['name'],
+                    'start' => $start_date->format('Y-m-d H:i:s'),
+                    'product_id' => $product['id']
+                );
+
+
+                $events[] = $event;
+            } else {
+                error_log('Invalid start date format: ' . $start_date_str);
+            }
+        }
+
+        $page++;
+    } else {
+        echo 'Error: ' . $response->get_error_message();
+        break;
+    }
+} while (true);
+
+set_transient('cached_events', $events, 3600); // Cache for 1 hour
+
+echo json_encode($events, JSON_PRETTY_PRINT);
+?>
